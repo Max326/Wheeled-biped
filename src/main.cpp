@@ -14,7 +14,7 @@ void setup() {
   // --- I2C SETUP ---
   Wire.setSDA(PB9);
   Wire.setSCL(PB8);
-  Wire.setClock(400000); 
+  Wire.setClock(100000); 
   Wire.begin();
 
   sensor.init(&Wire);
@@ -41,22 +41,24 @@ void setup() {
   // motor.init();
   // motor.initFOC();
 
-  Serial.println("Initializing Motor...");
-  motor.init();
+  // Serial.println("Initializing Motor...");
+  // motor.init();
 
-  Serial.println("Starting Sensor Alignment Dance...");
-  motor.initFOC();
-  command.add('T', doTarget, "target angle");
+  // Serial.println("Starting Sensor Alignment Dance...");
+  // motor.initFOC();
+  // command.add('T', doTarget, "target angle");
 
-  // Lock to 0 radians instantly upon boot
-  motor.target = 0.0; 
-  Serial.println("READY! Motor locked at 0 radians.");
+  // // Lock to 0 radians instantly upon boot
+  // motor.target = 0.0; 
+  // Serial.println("READY! Motor locked at 0 radians.");
 }
 
 void loop() {
 //   motor.loopFOC();
 //   motor.move();
 //   command.run();
+    sensor.update(); 
+    
     Serial.println("Motor angle: " + String(sensor.getMechanicalAngle()) + " rad");
     delay(100);
 }
