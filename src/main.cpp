@@ -9,12 +9,17 @@ void doTarget(char* cmd) { command.motor(&motor, cmd); }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); 
+  
+  // 1. Wait for Serial Monitor to open before continuing
+  while (!Serial) {} 
+  delay(100); 
+
+  SimpleFOCDebug::enable(&Serial);
 
   // --- I2C SETUP ---
   Wire.setSDA(PB9);
   Wire.setSCL(PB8);
-  Wire.setClock(100000); 
+  Wire.setClock(400000); 
   Wire.begin();
 
   sensor.init(&Wire);
@@ -29,36 +34,46 @@ void setup() {
 
   motor.voltage_sensor_align = 3.0; 
   
-  // 1. Set to Torque Mode
-  motor.controller = MotionControlType::torque;
-  motor.torque_controller = TorqueControlType::voltage;
+  // 2. Change to Angle mode to lock position
+  motor.controller = MotionControlType::angle;
   
-  // 2. Set absolute maximum voltage you want to test
-  // (Start lower, like 6.0V, to avoid melting the motor during stall)
-  motor.voltage_limit = 12.0; 
+  // --- GIMBAL MOTOR TUNING ---
+  
+  // 1. Smooth out the sensor noise so the PID doesn't panic on micro-jitters
+  motor.LPF_velocity.Tf = 0.01; 
 
-  // // Initialize FOC
-  // motor.init();
-  // motor.initFOC();
+  // 2. Lower the inner loop Velocity P and I gains
+  motor.PID_velocity.P = 0.1; // Much softer response
+  motor.PID_velocity.I = 10.0;
+  
+  // 3. Lower the outer loop Angle P gain
+  motor.P_angle.P = 15.0; 
 
-  // Serial.println("Initializing Motor...");
-  // motor.init();
+  // 4. Limit the maximum speed the motor will use to correct its position
+  motor.velocity_limit = 10.0; // rad/s
+  motor.voltage_limit = 3.0; 
 
-  // Serial.println("Starting Sensor Alignment Dance...");
-  // motor.initFOC();
-  // command.add('T', doTarget, "target angle");
+  // 3. Cleaned up initialization (only called once!)
+  Serial.println("Initializing Motor...");
+  motor.init();
 
-  // // Lock to 0 radians instantly upon boot
-  // motor.target = 0.0; 
-  // Serial.println("READY! Motor locked at 0 radians.");
+  Serial.println("Starting Sensor Alignment Dance...");
+  motor.initFOC();
+
+  command.add('T', doTarget, "target angle");
+
+  // Lock to 0 radians instantly upon boot
+  motor.target = 0.0; 
+  Serial.println("READY! Motor locked at 0 radians.");
 }
 
 void loop() {
-//   motor.loopFOC();
-//   motor.move();
-//   command.run();
-    sensor.update(); 
-    
-    Serial.println("Motor angle: " + String(sensor.getMechanicalAngle()) + " rad");
-    delay(100);
+  motor.loopFOC();
+  motor.move();
+  command.run();
+
+  // sensor.update(); 
+  
+  // Serial.println("Motor angle: " + String(sensor.getMechanicalAngle()) + " rad");
+  // delay(100);
 }
