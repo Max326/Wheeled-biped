@@ -1,31 +1,58 @@
 #include <Arduino.h>
 #include <SimpleFOC.h>
+#include <SPI.h>
 
-// 1. Tell SimpleFOC to use the AS5047/AS5147 profile and set CS to PB12
-MagneticSensorSPI sensor = MagneticSensorSPI(AS5147_SPI, PB12);
+#define CSN_PIN PB12
 
-// 2. Create a dedicated SPI2 bus (MOSI, MISO, SCK)
+// Dedicated SPI2 bus
 SPIClass SPI_2(PB15, PB14, PB13);
+
+// --- 1. OUR PERFECT BARE-METAL READ FUNCTION ---
+float readMyAS5047P() {
+  SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+  
+  digitalWrite(CSN_PIN, LOW);
+  // Unbroken 16-bit transfer fixes the STM32 byte-split bug
+  uint16_t raw_data = SPI_2.transfer16(0xFFFF); 
+  digitalWrite(CSN_PIN, HIGH);
+  
+  SPI_2.endTransaction();
+  
+  // Mask out the parity and error bits to get the raw 14-bit angle
+  uint16_t angle_raw = raw_data & 0x3FFF;
+  
+  // Convert 0-16383 to 0-6.283 radians for SimpleFOC
+  return ((float)angle_raw / 16384.0f) * _2PI;
+}
+
+// --- 2. OUR CUSTOM INIT FUNCTION ---
+void initMyAS5047P() {
+  pinMode(CSN_PIN, OUTPUT);
+  digitalWrite(CSN_PIN, HIGH);
+  SPI_2.begin();
+}
+
+// --- 3. TELL SIMPLEFOC TO USE OUR FUNCTIONS ---
+GenericSensor sensor = GenericSensor(readMyAS5047P, initMyAS5047P);
 
 void setup() {
   Serial.begin(115200);
   delay(2000); 
 
-  Serial.println("Initializing SPI2...");
+  Serial.println("Initializing Custom SPI2 Sensor...");
   
-  // 3. Pass our custom SPI2 bus to the sensor
-  sensor.init(&SPI_2);
+  // SimpleFOC will now call our initMyAS5047P() automatically
+  sensor.init();
 
-  Serial.println("AS5047P Ready! Open Teleplot.");
+  Serial.println("Custom AS5047P Ready! Open Teleplot.");
 }
 
 void loop() {
-  // Fetch the latest angle over SPI
+  // Fetch the latest angle using our perfect readMyAS5047P() function
   sensor.update();
 
-  // Print formatted for Teleplot
   Serial.print(">Angle_Rad:");
   Serial.println(sensor.getAngle());
   
-  delay(10); // 100Hz plot update
+  delay(10);
 }
