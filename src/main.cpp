@@ -2,57 +2,65 @@
 #include <SimpleFOC.h>
 #include <SPI.h>
 
-#define CSN_PIN PB12
+#define CSN_1 PB12
+#define CSN_2 PB10
 
-// Dedicated SPI2 bus
 SPIClass SPI_2(PB15, PB14, PB13);
 
-// --- 1. OUR PERFECT BARE-METAL READ FUNCTION ---
-float readMyAS5047P() {
+// --- ENCODER 1 (PB12) ---
+float readEnc1() {
   SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
-  
-  digitalWrite(CSN_PIN, LOW);
-  // Unbroken 16-bit transfer fixes the STM32 byte-split bug
+  digitalWrite(CSN_1, LOW);
   uint16_t raw_data = SPI_2.transfer16(0xFFFF); 
-  digitalWrite(CSN_PIN, HIGH);
-  
+  digitalWrite(CSN_1, HIGH);
   SPI_2.endTransaction();
-  
-  // Mask out the parity and error bits to get the raw 14-bit angle
-  uint16_t angle_raw = raw_data & 0x3FFF;
-  
-  // Convert 0-16383 to 0-6.283 radians for SimpleFOC
-  return ((float)angle_raw / 16384.0f) * _2PI;
+  return ((float)(raw_data & 0x3FFF) / 16384.0f) * _2PI;
 }
 
-// --- 2. OUR CUSTOM INIT FUNCTION ---
-void initMyAS5047P() {
-  pinMode(CSN_PIN, OUTPUT);
-  digitalWrite(CSN_PIN, HIGH);
+// --- ENCODER 2 (PB10) ---
+float readEnc2() {
+  SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+  digitalWrite(CSN_2, LOW);
+  uint16_t raw_data = SPI_2.transfer16(0xFFFF); 
+  digitalWrite(CSN_2, HIGH);
+  SPI_2.endTransaction();
+  return ((float)(raw_data & 0x3FFF) / 16384.0f) * _2PI;
+}
+
+// --- INIT FUNCTION ---
+void initEncoders() {
+  pinMode(CSN_1, OUTPUT);
+  pinMode(CSN_2, OUTPUT);
+  digitalWrite(CSN_1, HIGH);
+  digitalWrite(CSN_2, HIGH);
   SPI_2.begin();
 }
 
-// --- 3. TELL SIMPLEFOC TO USE OUR FUNCTIONS ---
-GenericSensor sensor = GenericSensor(readMyAS5047P, initMyAS5047P);
+// --- CREATE SIMPLEFOC SENSORS ---
+GenericSensor sensor1 = GenericSensor(readEnc1, initEncoders);
+GenericSensor sensor2 = GenericSensor(readEnc2, initEncoders); // Reuses the same init
 
 void setup() {
   Serial.begin(115200);
   delay(2000); 
 
-  Serial.println("Initializing Custom SPI2 Sensor...");
+  Serial.println("Initializing Dual Custom SPI2 Sensors...");
   
-  // SimpleFOC will now call our initMyAS5047P() automatically
-  sensor.init();
+  sensor1.init();
+  sensor2.init();
 
-  Serial.println("Custom AS5047P Ready! Open Teleplot.");
+  Serial.println("Dual AS5047P Ready! Open Teleplot.");
 }
 
 void loop() {
-  // Fetch the latest angle using our perfect readMyAS5047P() function
-  sensor.update();
+  sensor1.update();
+  sensor2.update();
 
-  Serial.print(">Angle_Rad:");
-  Serial.println(sensor.getAngle());
+  Serial.print(">Enc1_Rad:");
+  Serial.println(sensor1.getAngle());
+  
+  Serial.print(">Enc2_Rad:");
+  Serial.println(sensor2.getAngle());
   
   delay(10);
 }
