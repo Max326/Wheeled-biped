@@ -7,49 +7,44 @@
 
 SPIClass SPI_2(PB15, PB14, PB13);
 
-// --- ENCODER 1 (PB12) ---
+// --- COMPRESSED DUAL ENCODER LOGIC ---
 float readEnc1() {
   SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
   digitalWrite(CSN_1, LOW);
-  uint16_t raw_data = SPI_2.transfer16(0xFFFF); 
+  uint16_t raw = SPI_2.transfer16(0xFFFF);
   digitalWrite(CSN_1, HIGH);
   SPI_2.endTransaction();
-  return ((float)(raw_data & 0x3FFF) / 16384.0f) * _2PI;
+  return ((raw & 0x3FFF) / 16384.0f) * _2PI;
 }
 
-// --- ENCODER 2 (PB10) ---
 float readEnc2() {
   SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
   digitalWrite(CSN_2, LOW);
-  uint16_t raw_data = SPI_2.transfer16(0xFFFF); 
+  uint16_t raw = SPI_2.transfer16(0xFFFF);
   digitalWrite(CSN_2, HIGH);
   SPI_2.endTransaction();
-  return ((float)(raw_data & 0x3FFF) / 16384.0f) * _2PI;
+  return ((raw & 0x3FFF) / 16384.0f) * _2PI;
 }
 
-// --- INIT FUNCTION ---
-void initEncoders() {
-  pinMode(CSN_1, OUTPUT);
-  pinMode(CSN_2, OUTPUT);
-  digitalWrite(CSN_1, HIGH);
-  digitalWrite(CSN_2, HIGH);
-  SPI_2.begin();
+void initEncoders() { 
+  pinMode(CSN_1, OUTPUT); digitalWrite(CSN_1, HIGH);
+  pinMode(CSN_2, OUTPUT); digitalWrite(CSN_2, HIGH);
+  SPI_2.begin(); 
 }
 
 // --- CREATE SIMPLEFOC SENSORS ---
-GenericSensor sensor1 = GenericSensor(readEnc1, initEncoders);
-GenericSensor sensor2 = GenericSensor(readEnc2, initEncoders); // Reuses the same init
+GenericSensor sensor1(readEnc1, initEncoders);
+GenericSensor sensor2(readEnc2, initEncoders);
 
 void setup() {
   Serial.begin(115200);
   delay(2000); 
 
-  Serial.println("Initializing Dual Custom SPI2 Sensors...");
-  
+  Serial.println("Initializing Dual Custom AS5047P...");
   sensor1.init();
   sensor2.init();
-
-  Serial.println("Dual AS5047P Ready! Open Teleplot.");
+  
+  Serial.println("Encoders Ready! Open Teleplot.");
 }
 
 void loop() {
