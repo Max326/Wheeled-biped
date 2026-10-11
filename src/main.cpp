@@ -86,24 +86,23 @@ void setup() {
 void loop() {
   unsigned long current_time = micros();
   
-  // Update at exactly 100Hz
   if (current_time - last_imu_time >= 10000) { 
     float dt = (current_time - last_imu_time) / 1000000.0;
     last_imu_time = current_time;
 
-    // --- Read Accel ---
+    // --- ACCELEROMETER FIX (No bit-shifting!) ---
     Wire.beginTransmission(LSM303_ADDR);
     Wire.write(OUT_X_L_A | 0x80); 
     Wire.endTransmission(false);
     Wire.requestFrom((uint8_t)LSM303_ADDR, (uint8_t)6);
     int16_t ax=0, ay=0, az=0;
     if (Wire.available() == 6) {
-      ax = (Wire.read() | (Wire.read() << 8)) >> 4;
-      ay = (Wire.read() | (Wire.read() << 8)) >> 4;
-      az = (Wire.read() | (Wire.read() << 8)) >> 4;
+      ax = Wire.read() | (Wire.read() << 8);
+      ay = Wire.read() | (Wire.read() << 8);
+      az = Wire.read() | (Wire.read() << 8);
     }
 
-    // --- Read Gyro ---
+    // --- GYROSCOPE FIX ---
     int16_t gy=0;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     digitalWrite(GYRO_CS_PIN, LOW);
@@ -114,21 +113,26 @@ void loop() {
     digitalWrite(GYRO_CS_PIN, HIGH);
     SPI.endTransaction();
 
-    // --- Filter Math ---
-    float accel_pitch = atan2(-ax, sqrt((float)ay * (float)ay + (float)az * (float)az)) * 180.0 / PI;
-    float gyro_rate = gy * 0.00875;
-    pitch_angle = 0.995 * (pitch_angle + gyro_rate * dt) + 0.005 * accel_pitch;
+    // --- PURE SENSOR CALCULATION ---
+    // Try atan2(-ax, az) first. If it's wrong, change to atan2(-ay, az).
+    float pure_accel_pitch = atan2(-ax, az) * 180.0 / PI; 
+    float gyro_rate = -gy * 0.00875;
+    
+    // Pure integration for diagnostic plotting only
+    static float pure_gyro_pitch = 0.0;
+    pure_gyro_pitch += gyro_rate * dt;
 
-    // --- Read Encoders ---
-    sensor1.update();
-    sensor2.update();
+    // --- THE GOLDEN COMPLEMENTARY FILTER ---
+    pitch_angle = 0.98 * (pitch_angle + gyro_rate * dt) + 0.02 * pure_accel_pitch;
 
-    // --- Teleplot Output ---
-    Serial.print(">Pitch_Deg:");
+    // --- TELEPLOT DIAGNOSTICS ---
+    Serial.print(">Accel_Pitch:");
+    Serial.println(pure_accel_pitch);
+    
+    Serial.print(">Gyro_Only_Pitch:");
+    Serial.println(pure_gyro_pitch);
+    
+    Serial.print(">FILTERED_PITCH:");
     Serial.println(pitch_angle);
-    Serial.print(">Enc1_Rad:");
-    Serial.println(sensor1.getAngle());
-    Serial.print(">Enc2_Rad:");
-    Serial.println(sensor2.getAngle());
   }
 }
