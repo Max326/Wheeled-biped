@@ -16,6 +16,8 @@
 #define CSN_2 PB10
 SPIClass SPI_2(PB15, PB14, PB13);
 
+float gyro_bias = 0.0;
+
 float readEnc1() {
   SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
   digitalWrite(CSN_1, LOW);
@@ -78,6 +80,24 @@ void setup() {
   SPI.transfer(0x0F); 
   digitalWrite(GYRO_CS_PIN, HIGH);
   SPI.endTransaction();
+
+  Serial.println("Calibrating Gyroscope... DO NOT MOVE BOARD.");
+  long gyro_sum = 0;
+  for (int i = 0; i < 500; i++) {
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    digitalWrite(GYRO_CS_PIN, LOW);
+    SPI.transfer(GYRO_OUT_X | 0x80 | 0x40);
+    SPI.transfer(0x00); SPI.transfer(0x00);
+    int16_t raw_gy = SPI.transfer(0x00) | (SPI.transfer(0x00) << 8);
+    SPI.transfer(0x00); SPI.transfer(0x00);
+    digitalWrite(GYRO_CS_PIN, HIGH);
+    SPI.endTransaction();
+    
+    gyro_sum += raw_gy;
+    delay(2);
+  }
+  gyro_bias = (float)gyro_sum / 500.0;
+  Serial.print("Gyro Bias subtracted: "); Serial.println(gyro_bias);
   
   Serial.println("All Sensors Ready! Open Teleplot.");
   last_imu_time = micros();
@@ -114,9 +134,12 @@ void loop() {
     SPI.endTransaction();
 
     // --- PURE SENSOR CALCULATION ---
-    // Try atan2(-ax, az) first. If it's wrong, change to atan2(-ay, az).
-    float pure_accel_pitch = atan2(-ax, az) * 180.0 / PI; 
-    float gyro_rate = -gy * 0.00875;
+    // Flip the Z-axis (-az) to make the upside-down position equal 0 degrees!
+    float pure_accel_pitch = atan2(-ax, -az) * 180.0 / PI; 
+    
+    // 1. Subtract the bias so it doesn't drift
+    // 2. Add the negative sign up front to flip the direction to match the accel
+    float gyro_rate = (gy - gyro_bias) * 0.00875;
     
     // Pure integration for diagnostic plotting only
     static float pure_gyro_pitch = 0.0;
