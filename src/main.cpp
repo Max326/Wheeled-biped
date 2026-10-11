@@ -9,7 +9,7 @@
 #define OUT_X_L_A   0x28
 #define GYRO_CS_PIN PE3
 #define GYRO_CTRL1  0x20
-#define GYRO_OUT_X  0x28
+#define GYRO_OUT_Z  0x2C // <--- The Z-axis register
 
 // --- COMPRESSED DUAL ENCODER LOGIC (SPI2) ---
 #define CSN_1 PB12
@@ -46,7 +46,7 @@ GenericSensor sensor1(readEnc1, initEncoders);
 GenericSensor sensor2(readEnc2, initEncoders);
 
 // --- IMU VARIABLES ---
-float pitch_angle = 0.0;
+float roll_angle = 0.0;
 unsigned long last_imu_time = 0;
 
 void setup() {
@@ -81,12 +81,13 @@ void setup() {
   digitalWrite(GYRO_CS_PIN, HIGH);
   SPI.endTransaction();
 
-  Serial.println("Calibrating Gyroscope... DO NOT MOVE BOARD.");
+  Serial.println("Calibrating Gyroscope Y-Axis... DO NOT MOVE BOARD.");
   long gyro_sum = 0;
   for (int i = 0; i < 500; i++) {
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     digitalWrite(GYRO_CS_PIN, LOW);
-    SPI.transfer(GYRO_OUT_X | 0x80 | 0x40);
+    // Reading the new Z-axis register
+    SPI.transfer(GYRO_OUT_Z | 0x80 | 0x40);
     SPI.transfer(0x00); SPI.transfer(0x00);
     int16_t raw_gy = SPI.transfer(0x00) | (SPI.transfer(0x00) << 8);
     SPI.transfer(0x00); SPI.transfer(0x00);
@@ -110,7 +111,7 @@ void loop() {
     float dt = (current_time - last_imu_time) / 1000000.0;
     last_imu_time = current_time;
 
-    // --- ACCELEROMETER FIX (No bit-shifting!) ---
+    // --- Read Accel ---
     Wire.beginTransmission(LSM303_ADDR);
     Wire.write(OUT_X_L_A | 0x80); 
     Wire.endTransmission(false);
@@ -122,11 +123,11 @@ void loop() {
       az = Wire.read() | (Wire.read() << 8);
     }
 
-    // --- GYROSCOPE FIX ---
+    // --- Read Gyro (Y-Axis) ---
     int16_t gy=0;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     digitalWrite(GYRO_CS_PIN, LOW);
-    SPI.transfer(GYRO_OUT_X | 0x80 | 0x40); 
+    SPI.transfer(GYRO_OUT_Z | 0x80 | 0x40); 
     SPI.transfer(0x00); SPI.transfer(0x00); 
     gy = SPI.transfer(0x00) | (SPI.transfer(0x00) << 8); 
     SPI.transfer(0x00); SPI.transfer(0x00); 
@@ -134,28 +135,25 @@ void loop() {
     SPI.endTransaction();
 
     // --- PURE SENSOR CALCULATION ---
-    // Flip the Z-axis (-az) to make the upside-down position equal 0 degrees!
-    float pure_accel_pitch = atan2(-ax, -az) * 180.0 / PI; 
+    // Switched to ay for Roll. Z remains inverted (-az) since the board is upside down.
+    float pure_accel_roll = atan2(-ay, -az) * 180.0 / PI; 
     
-    // 1. Subtract the bias so it doesn't drift
-    // 2. Add the negative sign up front to flip the direction to match the accel
     float gyro_rate = (gy - gyro_bias) * 0.00875;
     
-    // Pure integration for diagnostic plotting only
-    static float pure_gyro_pitch = 0.0;
-    pure_gyro_pitch += gyro_rate * dt;
+    static float pure_gyro_roll = 0.0;
+    pure_gyro_roll += gyro_rate * dt;
 
-    // --- THE GOLDEN COMPLEMENTARY FILTER ---
-    pitch_angle = 0.98 * (pitch_angle + gyro_rate * dt) + 0.02 * pure_accel_pitch;
+    // --- COMPLEMENTARY FILTER ---
+    roll_angle = 0.98 * (roll_angle + gyro_rate * dt) + 0.02 * pure_accel_roll;
 
     // --- TELEPLOT DIAGNOSTICS ---
-    Serial.print(">Accel_Pitch:");
-    Serial.println(pure_accel_pitch);
+    Serial.print(">Accel_Roll:");
+    Serial.println(pure_accel_roll);
     
-    Serial.print(">Gyro_Only_Pitch:");
-    Serial.println(pure_gyro_pitch);
+    Serial.print(">Gyro_Only_Roll:");
+    Serial.println(pure_gyro_roll);
     
-    Serial.print(">FILTERED_PITCH:");
-    Serial.println(pitch_angle);
+    Serial.print(">FILTERED_ROLL:");
+    Serial.println(roll_angle);
   }
 }
