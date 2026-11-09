@@ -187,7 +187,7 @@ void loop() {
     }
 
     motor1.move(-control_voltage); 
-    motor2.move(control_voltage); 
+    motor2.move(-control_voltage); 
 
     // --- DIAGNOSTICS ---
     // static unsigned long last_print = 0;
