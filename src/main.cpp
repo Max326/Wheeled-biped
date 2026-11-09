@@ -20,6 +20,9 @@ SPIClass SPI_2(PB15, PB14, PB13);
 BLDCMotor motor1 = BLDCMotor(7); 
 BLDCDriver3PWM driver1 = BLDCDriver3PWM(PA1, PA2, PA3, PE7);
 
+BLDCMotor motor2 = BLDCMotor(7);
+BLDCDriver3PWM driver2 = BLDCDriver3PWM(PD12, PD13, PD14, PD15);
+
 // --- INNER LOOP PID ONLY (STABILIZATION) ---
 // P, I, D, ramp, limit (max voltage)
 // Reduced P and D for hand-testing
@@ -90,17 +93,27 @@ void setup() {
   Serial.println("Configuring FOC...");
   driver1.voltage_power_supply = 12.0; driver1.init();
   motor1.linkDriver(&driver1); motor1.linkSensor(&sensor1);
+
+  driver2.voltage_power_supply = 12.0; driver2.init();
+  motor2.linkDriver(&driver2); motor2.linkSensor(&sensor2);
+  
   motor1.controller = MotionControlType::torque; 
   motor1.torque_controller = TorqueControlType::voltage;
   motor1.voltage_limit = 8.0;
+
+  motor2.controller = MotionControlType::torque; 
+  motor2.torque_controller = TorqueControlType::voltage;
+  motor2.voltage_limit = 8.0;
   
   motor1.init(); motor1.initFOC();
+  motor2.init(); motor2.initFOC();
   last_imu_time = micros();
   Serial.println("GO!");
 }
 
 void loop() {
   motor1.loopFOC();
+  // motor2.loopFOC();
 
   unsigned long current_time = micros();
   if (current_time - last_imu_time >= 4000) { 
@@ -148,13 +161,23 @@ void loop() {
     }
 
     motor1.move(-control_voltage); // Odwróć znak na -control_voltage jeśli działa odwrotnie!
+    // motor2.move(control_voltage); // Odwróć znak na -control_voltage jeśli działa odwrotnie!
 
     // --- DIAGNOSTICS ---
-    static unsigned long last_print = 0;
-    if (millis() - last_print > 50) { 
-      last_print = millis();
-      Serial.print(">Pitch:"); Serial.println(filtered_pitch);
-      Serial.print(">Voltage:"); Serial.println(control_voltage);
-    }
+    // static unsigned long last_print = 0;
+    // if (millis() - last_print > 50) { 
+    //   last_print = millis();
+    //   Serial.print(">Pitch:"); Serial.println(filtered_pitch);
+    //   Serial.print(">Voltage:"); Serial.println(control_voltage);
+
+    //   Serial.print(">Angle 1:"); Serial.println(sensor1.getAngle());
+    //   Serial.print(">Angle 2:"); Serial.println(sensor2.getAngle());
+    // }
+
+    // Serial.print(">Pitch:"); Serial.println(filtered_pitch);
+    // Serial.print(">Voltage:"); Serial.println(control_voltage);
+
+    // Serial.print(">Angle 1:"); Serial.println(sensor1.getAngle());
+    // Serial.print(">Angle 2:"); Serial.println(sensor2.getAngle());
   }
 }
