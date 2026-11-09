@@ -11,9 +11,9 @@
 #define GYRO_CTRL1  0x20
 #define GYRO_OUT_Z  0x2C
 
-// --- ENCODER PINS & SPI ---
-#define CSN_1 PB12
-#define CSN_2 PB10
+// --- ENCODER PINS & SPI (SWAPPED AS TESTED) ---
+#define CSN_1 PB10
+#define CSN_2 PB12
 SPIClass SPI_2(PB15, PB14, PB13);
 
 // --- MOTOR SETTINGS ---
@@ -34,29 +34,47 @@ float roll_angle = 0.0;
 float gyro_bias = 0.0;
 unsigned long last_imu_time = 0;
 
-// (Wklej tutaj funkcje initEncoders, readEnc1, readEnc2 oraz obiekty GenericSensor z poprzedniego kodu)
 void initEncoders() { 
   pinMode(CSN_1, OUTPUT); digitalWrite(CSN_1, HIGH);
   pinMode(CSN_2, OUTPUT); digitalWrite(CSN_2, HIGH);
   SPI_2.begin(); 
   SPI_2.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
 }
+
 float readEnc1() {
-  digitalWrite(CSN_1, LOW); uint16_t raw = SPI_2.transfer16(0xFFFF); digitalWrite(CSN_1, HIGH);
+  // Ensure the other CS is HIGH and wait 2us for MISO line to release (Hi-Z)
+  digitalWrite(CSN_2, HIGH);
+  // delayMicroseconds(2);
+  
+  digitalWrite(CSN_1, LOW); 
+  uint16_t raw = SPI_2.transfer16(0xFFFF); 
+  digitalWrite(CSN_1, HIGH);
   return ((raw & 0x3FFF) / 16384.0f) * _2PI;
 }
+
 float readEnc2() {
-  digitalWrite(CSN_2, LOW); uint16_t raw = SPI_2.transfer16(0xFFFF); digitalWrite(CSN_2, HIGH);
+  // Ensure the other CS is HIGH and wait 2us for MISO line to release (Hi-Z)
+  digitalWrite(CSN_1, HIGH);
+  // delayMicroseconds(2);
+
+  digitalWrite(CSN_2, LOW); 
+  uint16_t raw = SPI_2.transfer16(0xFFFF); 
+  digitalWrite(CSN_2, HIGH);
   return ((raw & 0x3FFF) / 16384.0f) * _2PI;
 }
+
 GenericSensor sensor1(readEnc1, initEncoders);
 GenericSensor sensor2(readEnc2, initEncoders);
 
 void setup() {
   Serial.begin(115200);
   delay(2000); 
+  
+  // Enable SimpleFOC debug output to see exact calibration results for both motors
+  SimpleFOCDebug::enable(&Serial);
 
-  sensor1.init(); sensor2.init();
+  sensor1.init(); 
+  sensor2.init();
 
   Serial.println("Configuring IMU...");
   Wire.setSDA(PB9); Wire.setSCL(PB6);
@@ -99,21 +117,29 @@ void setup() {
   
   motor1.controller = MotionControlType::torque; 
   motor1.torque_controller = TorqueControlType::voltage;
-  motor1.voltage_limit = 8.0;
+  motor1.voltage_sensor_align = 2.0;
+  motor1.voltage_limit = 6.0;
 
   motor2.controller = MotionControlType::torque; 
   motor2.torque_controller = TorqueControlType::voltage;
-  motor2.voltage_limit = 8.0;
+  motor2.voltage_sensor_align = 2.0;
+  motor2.voltage_limit = 6.0;
   
-  motor1.init(); motor1.initFOC();
-  motor2.init(); motor2.initFOC();
+  Serial.println("--- CALIBRATING MOTOR 1 ---");
+  motor1.init(); 
+  motor1.initFOC();
+
+  Serial.println("--- CALIBRATING MOTOR 2 ---");
+  motor2.init(); 
+  motor2.initFOC();
+
   last_imu_time = micros();
   Serial.println("GO!");
 }
 
 void loop() {
   motor1.loopFOC();
-  // motor2.loopFOC();
+  motor2.loopFOC();
 
   unsigned long current_time = micros();
   if (current_time - last_imu_time >= 4000) { 
@@ -145,12 +171,12 @@ void loop() {
     float accel_roll = atan2(-ay, -az); 
     float gyro_rate = (gy - gyro_bias) * 0.00875 * _PI / 180.0; 
     
-    // Klasyczny filtr komplementarny
+    // Complementary filter to combine accelerometer and gyroscope data
     roll_angle = 0.99 * (roll_angle + gyro_rate * dt) + 0.01 * accel_roll;
     float filtered_pitch = lpf_pitch(roll_angle);
 
     // --- BALANCE CONTROL ---
-    // Target is ALWAYS 0.0 (Perfectly upright)
+    // target is always 0 (upright)
     float target_pitch = 0.0;
     float control_voltage = -pid_stb(target_pitch - filtered_pitch);
 
@@ -160,8 +186,8 @@ void loop() {
       pid_stb.reset();
     }
 
-    motor1.move(-control_voltage); // Odwróć znak na -control_voltage jeśli działa odwrotnie!
-    // motor2.move(control_voltage); // Odwróć znak na -control_voltage jeśli działa odwrotnie!
+    motor1.move(-control_voltage); 
+    motor2.move(control_voltage); 
 
     // --- DIAGNOSTICS ---
     // static unsigned long last_print = 0;
