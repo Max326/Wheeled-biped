@@ -12,8 +12,8 @@
 #define GYRO_OUT_Z  0x2C
 
 // --- ENCODER PINS & SPI (SWAPPED AS TESTED) ---
-#define CSN_1 PB10
-#define CSN_2 PB12
+#define CSN_1 PB12
+#define CSN_2 PB10
 SPIClass SPI_2(PB15, PB14, PB13);
 
 // --- MOTOR SETTINGS ---
@@ -21,7 +21,9 @@ BLDCMotor motor1 = BLDCMotor(7);
 BLDCDriver3PWM driver1 = BLDCDriver3PWM(PA1, PA2, PA3, PE7);
 
 BLDCMotor motor2 = BLDCMotor(7);
-BLDCDriver3PWM driver2 = BLDCDriver3PWM(PD12, PD13, PD14, PD15);
+// BLDCDriver3PWM driver2 = BLDCDriver3PWM(PD12, PD13, PD14, PD15);
+// pins changed to prevent voltage stolen by LEDs on PD12 and PD13
+BLDCDriver3PWM driver2 = BLDCDriver3PWM(PE9, PE11, PE13, PE15);
 
 // --- INNER LOOP PID ONLY (STABILIZATION) ---
 // P, I, D, ramp, limit (max voltage)
